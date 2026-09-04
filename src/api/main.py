@@ -110,7 +110,34 @@ def create_configured_app():
 
     @base_app.get("/health")
     async def health_check():
-        return {"status": "ok"}
+        status = {"api": "ok", "database": "unknown", "redis": "unknown"}
+        
+        # Check DB
+        try:
+            from sqlalchemy import text
+            async with async_session_factory() as session:
+                await session.execute(text("SELECT 1"))
+            status["database"] = "ok"
+        except Exception as e:
+            logger.error(f"Database health check failed: {e}")
+            status["database"] = "error"
+            
+        # Check Redis
+        try:
+            import redis.asyncio as redis
+            redis_client = redis.from_url(settings.redis_url)
+            await redis_client.ping()
+            await redis_client.aclose()
+            status["redis"] = "ok"
+        except Exception as e:
+            logger.error(f"Redis health check failed: {e}")
+            status["redis"] = "error"
+
+        if status["database"] != "ok" or status["redis"] != "ok":
+            from fastapi.responses import JSONResponse
+            return JSONResponse(status_code=503, content=status)
+
+        return status
 
     from fastapi import Request
     from fastapi.responses import JSONResponse
