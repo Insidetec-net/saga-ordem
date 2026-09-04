@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 # DTOs (Data Transfer Objects)
 # ═══════════════════════════════════════════════════════════════
 
+
 class CreateOrderItemDTO(BaseModel):
     product_id: UUID
     product_name: str
@@ -57,13 +58,14 @@ class ReconciliationReportDTO(BaseModel):
 # FastAPI Application Factory
 # ═══════════════════════════════════════════════════════════════
 
+
 def create_app(
     orchestrator,  # OrderSagaOrchestrator
     reconciliation,  # ReconciliationWorker
     order_repo,  # OrderRepository
     saga_log,  # SagaLogRepository
 ):
-    from fastapi import FastAPI, HTTPException, BackgroundTasks
+    from fastapi import BackgroundTasks, FastAPI, HTTPException
 
     app = FastAPI(
         title="Order Processing System",
@@ -74,13 +76,15 @@ def create_app(
     @app.post("/orders", response_model=OrderResponseDTO, status_code=201)
     async def create_order(dto: CreateOrderDTO):
         """Create a new order — saga starts."""
+        from src.domain import Address, Money, Order, OrderItem, PaymentMethod
+
         order_id = uuid4()
 
-        # Build domain order
-        from .domain import Address, Money, Order, OrderItem, PaymentMethod
-
-        payment_map = {"CREDIT_CARD": "CREDIT_CARD", "PIX": "PIX", "BOLETO": "BOLETO"}
-        payment_method = PaymentMethod[dto.payment_method] if dto.payment_method in PaymentMethod.__members__ else PaymentMethod.PIX
+        payment_method = (
+            PaymentMethod[dto.payment_method]
+            if dto.payment_method in PaymentMethod.__members__
+            else PaymentMethod.PIX
+        )
 
         items = [
             OrderItem(
@@ -169,14 +173,19 @@ def create_app(
             steps=steps,
         )
 
-    @app.post("/reconciliation/run", response_model=ReconciliationReportDTO)
+    @app.post(
+        "/reconciliation/run", response_model=ReconciliationReportDTO
+    )
     async def run_reconciliation(background_tasks: BackgroundTasks):
         """Trigger daily reconciliation."""
-        report = await reconciliation.reconciliate()
+        report = await reconciliation.reconcile()
         return ReconciliationReportDTO(**report)
 
     @app.get("/health")
     async def health():
-        return {"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()}
+        return {
+            "status": "ok",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
 
     return app
